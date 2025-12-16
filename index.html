@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gesture, Game & Fitness Particles - Kaustav Ray</title>
+    <!-- Copyright 2025 Kaustav Ray -->
+    
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- MediaPipe Hands & Pose -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: white;
+            cursor: none;
+        }
+
+        /* --- HAND CURSOR --- */
+        #hand-cursor {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 30px;
+            height: 30px;
+            border: 2px solid #00ffff;
+            background: rgba(0, 255, 255, 0.1);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 99999;
+            box-shadow: 0 0 15px #00ffff, inset 0 0 10px rgba(0,255,255,0.5);
+            transition: width 0.1s, height 0.1s, border-color 0.1s, background-color 0.1s;
+            display: none;
+        }
+
+        #hand-cursor::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 4px;
+            height: 4px;
+            background: white;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        #hand-cursor.pinching {
+            width: 20px;
+            height: 20px;
+            border-color: #FFD700; /* Gold */
+            background: rgba(255, 215, 0, 0.3);
+        }
+
+        #hand-cursor.locked {
+            border-color: #00FF00 !important; /* Green */
+            background: rgba(0, 255, 0, 0.5) !important;
+            box-shadow: 0 0 25px #00FF00;
+            width: 25px;
+            height: 25px;
+        }
+
+        /* --- VIRTUAL KEYBOARD --- */
+        #virtual-keyboard {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 50;
+            display: none; /* Shown in Type Mode */
+            flex-direction: column;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px;
+            border-radius: 15px;
+            border: 1px solid #333;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.1);
+        }
+
+        .kb-row {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .kb-key {
+            width: 40px;
+            height: 45px;
+            border: 1px solid #00ffff;
+            color: #00ffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 5px;
+            font-weight: bold;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.1s;
+            background: rgba(0, 255, 255, 0.05);
+        }
+
+        .kb-key.wide { width: 80px; } /* Space/Backspace */
+        
+        .kb-key.hovered {
+            background: rgba(0, 255, 255, 0.3);
+            box-shadow: 0 0 10px #00ffff;
+            transform: scale(1.1);
+        }
+
+        .kb-key.active {
+            background: #00ffff;
+            color: black;
+            transform: scale(0.95);
+        }
+
+        /* --- UI ELEMENTS --- */
+        #welcome-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: radial-gradient(circle at center, #1a1a1a 0%, #000000 100%);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            transition: opacity 0.8s ease-out;
+            cursor: default;
+        }
+
+        .profile-photo {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: 3px solid #00ffff;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.4);
+            margin-bottom: 20px;
+            object-fit: cover;
+            background: #333; 
+        }
+
+        #welcome-screen h1 {
+            font-size: 3.5rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(90deg, #FF9933, #FFFFFF, #138808);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+        }
+
+        .instruction-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 3rem;
+            max-width: 900px;
+        }
+
+        .instruction-card {
+            background: rgba(255,255,255,0.05);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #333;
+        }
+
+        .instruction-icon { font-size: 2rem; margin-bottom: 10px; display: block; }
+
+        #start-btn {
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            background: transparent;
+            color: #00ffff;
+            border: 2px solid #00ffff;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: bold;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
+        }
+
+        #start-btn:hover {
+            background: #00ffff;
+            color: #000;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.6);
+            transform: scale(1.05);
+        }
+
+        #app-container-wrapper {
+            opacity: 0; 
+            transition: opacity 1s ease-in;
+            pointer-events: none;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        #webcam-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 240px;
+            height: 180px;
+            z-index: 10;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid rgba(0, 255, 255, 0.5);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+            background: rgba(0,0,0,0.8);
+        }
+
+        #output-canvas { width: 100%; height: 100%; transform: scaleX(-1); }
+        #video-input { display: none; }
+
+        #ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            z-index: 2;
+        }
+
+        .status-box, #top-controls {
+            pointer-events: auto;
+            cursor: default;
+        }
+
+        .app-title {
+            font-size: 2.5rem;
+            margin: 0 0 10px 0;
+            background: linear-gradient(90deg, #FF9933, #FFFFFF, #138808);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 800;
+        }
+
+        .status-box {
+            background: rgba(20, 20, 20, 0.8);
+            border: 1px solid #333;
+            padding: 15px;
+            border-radius: 8px;
+            max-width: 300px;
+            transition: opacity 0.3s;
+        }
+
+        .status {
+            font-size: 1.4rem;
+            color: #00ffff;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        .legend { font-size: 0.95rem; color: #ccc; line-height: 1.6; }
+        .legend span { color: #fff; font-weight: bold; }
+
+        /* --- CONTROLS --- */
+        #top-controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 50;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 10px;
+        }
+
+        .mode-btn {
+            background: rgba(0,0,0,0.6);
+            color: white;
+            border: 1px solid #555;
+            padding: 8px 16px;
+            font-size: 0.9rem;
+            border-radius: 30px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.2s;
+            width: 100%;
+            text-align: right;
+        }
+
+        .mode-btn:hover, .mode-btn.active {
+            background: #00ffff;
+            color: #000;
+            border-color: #00ffff;
+            font-weight: bold;
+        }
+
+        #text-input-container { display: none; margin-top: 10px; text-align: right; }
+        #particle-input {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-bottom: 2px solid #00ffff;
+            color: white;
+            font-size: 1.5rem;
+            padding: 5px;
+            width: 250px;
+            text-align: center;
+            outline: none;
+            text-transform: uppercase;
+            cursor: text;
+        }
+
+        #game-message {
+            display: none;
+            font-size: 3rem;
+            color: #FFD700;
+            text-shadow: 0 0 20px #FF4500;
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 5;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        #pushup-feedback {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 4rem;
+            color: rgba(255,255,255,0.1);
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 1.5rem;
+            z-index: 20;
+            text-align: center;
+            background: rgba(0,0,0,0.8);
+            padding: 40px;
+            border-radius: 20px;
+            border: 1px solid #333;
+            display: none;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255,255,255,0.1);
+            border-top: 5px solid #FF9933;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px auto;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .copyright {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.3);
+            font-size: 0.8rem;
+            z-index: 2;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- WELCOME SCREEN -->
+    <div id="welcome-screen">
+        <img src="https://i.ibb.co/r2cZhSKc/Screenshot-20251124-132751-Google.jpg" alt="Kaustav Ray" class="profile-photo" onerror="this.style.display='none'">
+        
+        <h1>Particle Morph 3D</h1>
+        <h2>A KAUSTAV RAY EXPERIENCE</h2>
+        
+        <div class="instruction-grid">
+            <div class="instruction-card">
+                <span class="instruction-icon">🖐️</span>
+                <div><b>Gesture</b><br>Hand Shapes</div>
+            </div>
+            <div class="instruction-card">
+                <span class="instruction-icon">⌨️</span>
+                <div><b>Type</b><br>3D Text</div>
+            </div>
+            <div class="instruction-card">
+                <span class="instruction-icon">💪</span>
+                <div><b>Fitness</b><br>Pushup Counter</div>
+            </div>
+            <div class="instruction-card">
+                <span class="instruction-icon">❌⭕</span>
+                <div><b>Game</b><br>Tic Tac Toe</div>
+            </div>
+        </div>
+
+        <button id="start-btn" onclick="startExperience()">Start System</button>
+        <p style="margin-top: 20px; color: #555; font-size: 0.8rem;">Requires Camera Access</p>
+    </div>
+
+    <!-- MAIN APP WRAPPER -->
+    <div id="app-container-wrapper">
+        <div id="hand-cursor"></div>
+        <div id="game-message"></div>
+        <div id="pushup-feedback">GO!</div>
+
+        <!-- VIRTUAL KEYBOARD -->
+        <div id="virtual-keyboard">
+            <div class="kb-row" id="kb-row-1"></div>
+            <div class="kb-row" id="kb-row-2"></div>
+            <div class="kb-row" id="kb-row-3"></div>
+            <div class="kb-row" id="kb-row-4"></div> <!-- Space Bar -->
+        </div>
+
+        <div id="loading">
+            <div class="spinner"></div>
+            <div>Initializing AI Models...</div>
+            <div style="font-size: 0.9rem; color: #888; margin-top:10px;">Please allow camera access</div>
+        </div>
+
+        <!-- Left Controls -->
+        <div id="ui-overlay">
+            <h1 class="app-title">Particle Morph</h1>
+            <div class="status-box" id="info-panel">
+                <div class="status" id="main-status">Initializing...</div>
+                <div class="legend" id="legend-content">
+                    <div><span>🖐️ Open Hand:</span> Flow to Shape</div>
+                    <div><span>✊ Fist:</span> Gravity Well</div>
+                    <div><span>👌 Pinch:</span> Switch Shape</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Controls (Modes) -->
+        <div id="top-controls">
+            <button class="mode-btn active" id="btn-gesture" onclick="setMode('gesture')">🖐️ Gesture Mode</button>
+            <button class="mode-btn" id="btn-type" onclick="setMode('type')">⌨️ Type Mode</button>
+            <button class="mode-btn" id="btn-pushup" onclick="setMode('pushup')">💪 Pushup Counter</button>
+            <button class="mode-btn" id="btn-tictactoe" onclick="setMode('tictactoe')">❌⭕ Tic Tac Toe</button>
+            
+            <div id="text-input-container">
+                <input type="text" id="particle-input" placeholder="TYPE OR USE AIR KB..." maxlength="10" oninput="onTypeInput()">
+            </div>
+        </div>
+
+        <div id="webcam-container">
+            <canvas id="output-canvas"></canvas>
+        </div>
+        <video id="video-input" playsinline></video>
+        
+        <div id="canvas-container"></div>
+        <div class="copyright">Copyright © 2025 Kaustav Ray</div>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        const PARTICLE_COUNT = 25000;
+        const PARTICLE_SIZE = 0.15;
+        const TRANSITION_SPEED = 0.08;
+
+        // --- State ---
+        let scene, camera, renderer, particles;
+        let positions, colors, targetPositions, targetColors;
+        let isHandPresent = false;
+        let isGravityWell = false;
+        
+        let handX = 0, handY = 0; 
+        let isPinching = false, wasPinching = false;
+        
+        // Mode State
+        let appMode = 'gesture'; // gesture, type, pushup, tictactoe
+        
+        // Pushup State
+        let pushupCount = 0;
+        let isPushupDown = false;
+        let poseLandmarks = null;
+
+        // Tic Tac Toe State
+        let tttBoard = Array(9).fill(null);
+        let tttTurn = 'X';
+        let tttHoverIndex = -1;
+        let tttWinner = null;
+        let tttWinningLine = [];
+
+        // Shape State
+        const shapeList = ['rocket', 'bmw', 'audi', 'tata', 'flag', 'heart', 'flower', 'saturn'];
+        let currentShapeIndex = 0;
+        let currentShapeName = 'rocket';
+
+        // Keyboard State
+        let currentTypedText = "";
+        let kbKeys = []; // Stores key elements for hit detection
+
+        // --- Colors ---
+        const C_SAFFRON = new THREE.Color(0xFF9933);
+        const C_WHITE = new THREE.Color(0xFFFFFF);
+        const C_GREEN = new THREE.Color(0x138808);
+        const C_BLUE = new THREE.Color(0x00BFFF);
+        const C_RED = new THREE.Color(0xFF0000);
+        const C_GOLD = new THREE.Color(0xFFD700);
+
+        // --- ENTRY POINT ---
+        function startExperience() {
+            document.getElementById('welcome-screen').style.opacity = 0;
+            setTimeout(() => {
+                document.getElementById('welcome-screen').style.display = 'none';
+                document.getElementById('app-container-wrapper').style.opacity = 1;
+                document.getElementById('app-container-wrapper').style.pointerEvents = 'auto';
+                document.getElementById('loading').style.display = 'block';
+                
+                initThree();
+                initKeyboard(); // Setup virtual keyboard
+                initMediaPipe();
+            }, 800);
+        }
+
+        function initKeyboard() {
+            const layout = [
+                ['Q','W','E','R','T','Y','U','I','O','P'],
+                ['A','S','D','F','G','H','J','K','L'],
+                ['Z','X','C','V','B','N','M','⌫'] // Backspace
+            ];
+            
+            const rows = [
+                document.getElementById('kb-row-1'),
+                document.getElementById('kb-row-2'),
+                document.getElementById('kb-row-3')
+            ];
+
+            // Render Keys
+            layout.forEach((rowKeys, i) => {
+                rowKeys.forEach(key => {
+                    const el = document.createElement('div');
+                    el.className = 'kb-key';
+                    el.innerText = key;
+                    el.dataset.key = key;
+                    if(key === '⌫') el.classList.add('wide');
+                    rows[i].appendChild(el);
+                    kbKeys.push(el);
+                });
+            });
+
+            // Space Bar Row
+            const spaceRow = document.getElementById('kb-row-4');
+            const space = document.createElement('div');
+            space.className = 'kb-key wide';
+            space.style.width = '200px';
+            space.innerText = 'SPACE';
+            space.dataset.key = 'SPACE';
+            spaceRow.appendChild(space);
+            kbKeys.push(space);
+        }
+
+        // --- MODE SWITCHING ---
+        function setMode(mode) {
+            appMode = mode;
+            
+            // UI Updates
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`btn-${mode}`).classList.add('active');
+            
+            const legend = document.getElementById('legend-content');
+            const status = document.getElementById('main-status');
+            const inputCont = document.getElementById('text-input-container');
+            const gameMsg = document.getElementById('game-message');
+            const pushupFeed = document.getElementById('pushup-feedback');
+            const virtualKB = document.getElementById('virtual-keyboard');
+
+            inputCont.style.display = 'none';
+            gameMsg.style.display = 'none';
+            pushupFeed.style.display = 'none';
+            virtualKB.style.display = 'none';
+
+            if (mode === 'gesture') {
+                status.innerText = "Gesture Control";
+                legend.innerHTML = `<div><span>🖐️ Open Hand:</span> Flow</div><div><span>✊ Fist:</span> Gravity</div><div><span>👌 Pinch:</span> Switch</div>`;
+                generateShape(shapeList[currentShapeIndex]);
+            } 
+            else if (mode === 'type') {
+                status.innerText = "Type Mode";
+                legend.innerHTML = "Pinch keys on Virtual Keyboard<br>or use Input Box.";
+                inputCont.style.display = 'block';
+                virtualKB.style.display = 'flex'; // Show Air Keyboard
+                
+                currentTypedText = "TYPE";
+                document.getElementById('particle-input').value = currentTypedText;
+                generateTextShape(currentTypedText);
+            }
+            else if (mode === 'pushup') {
+                status.innerText = "Pushup Counter";
+                legend.innerHTML = "Position camera to see full body.<br>Down: Elbow < 90°<br>Up: Straight Arms";
+                pushupCount = 0;
+                generateTextShape("0");
+            }
+            else if (mode === 'tictactoe') {
+                status.innerText = "Tic Tac Toe";
+                legend.innerHTML = "Pinch in grid to INSTANTLY lock X.<br>AI plays O.";
+                resetTicTacToe();
+                generateTicTacToeBoard();
+            }
+        }
+
+        function onTypeInput() {
+            if (appMode === 'type') {
+                currentTypedText = document.getElementById('particle-input').value.toUpperCase();
+                generateTextShape(currentTypedText);
+            }
+        }
+
+        function handleVirtualKeyPress(key) {
+            if (key === '⌫') {
+                currentTypedText = currentTypedText.slice(0, -1);
+            } else if (key === 'SPACE') {
+                currentTypedText += " ";
+            } else {
+                if (currentTypedText.length < 10) { // Limit length
+                    currentTypedText += key;
+                }
+            }
+            // Update UI & Particles
+            document.getElementById('particle-input').value = currentTypedText;
+            generateTextShape(currentTypedText);
+        }
+
+        // --- THREE.JS SETUP ---
+        function initThree() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x000000, 0.02);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 40;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            const geometry = new THREE.BufferGeometry();
+            positions = new Float32Array(PARTICLE_COUNT * 3);
+            colors = new Float32Array(PARTICLE_COUNT * 3);
+            targetPositions = new Float32Array(PARTICLE_COUNT * 3);
+            targetColors = new Float32Array(PARTICLE_COUNT * 3);
+
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                positions[i*3] = (Math.random()-0.5)*100;
+                positions[i*3+1] = (Math.random()-0.5)*100;
+                positions[i*3+2] = (Math.random()-0.5)*100;
+                colors[i*3] = 1; colors[i*3+1] = 1; colors[i*3+2] = 1;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            const sprite = new THREE.TextureLoader().load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/sprites/disc.png');
+            const material = new THREE.PointsMaterial({
+                size: PARTICLE_SIZE, vertexColors: true, map: sprite,
+                blending: THREE.AdditiveBlending, depthTest: false, transparent: true, opacity: 0.9
+            });
+
+            particles = new THREE.Points(geometry, material);
+            scene.add(particles);
+
+            generateShape('rocket');
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }, false);
+            
+            animate();
+        }
+
+        function setTarget(i, x, y, z, c) {
+            targetPositions[i*3] = x; targetPositions[i*3+1] = y; targetPositions[i*3+2] = z;
+            targetColors[i*3] = c.r; targetColors[i*3+1] = c.g; targetColors[i*3+2] = c.b;
+        }
+
+        // --- ANIMATION LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (appMode === 'pushup') {
+                updatePushupLogic();
+            } else if (appMode === 'tictactoe') {
+                updateTicTacToeVisuals(); 
+            } else {
+                updateGestureLogic();
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        // 1. GESTURE & TYPE LOGIC
+        function updateGestureLogic() {
+            const positionsAttribute = particles.geometry.attributes.position;
+            const colorsAttribute = particles.geometry.attributes.color;
+
+            // Rotation
+            if (isHandPresent && appMode === 'gesture') {
+                particles.rotation.x += (handY - 0.5) * 0.08;
+                particles.rotation.y += (handX - 0.5) * 0.08;
+            } else if (appMode === 'type') {
+                particles.rotation.y += 0.002; // Auto rotate text
+            }
+
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                let tx = targetPositions[i*3], ty = targetPositions[i*3+1], tz = targetPositions[i*3+2];
+                
+                if (appMode === 'gesture' && isGravityWell && isHandPresent) {
+                    tx = 0; ty = 0; tz = 0;
+                }
+
+                positions[i*3] += (tx - positions[i*3]) * TRANSITION_SPEED;
+                positions[i*3+1] += (ty - positions[i*3+1]) * TRANSITION_SPEED;
+                positions[i*3+2] += (tz - positions[i*3+2]) * TRANSITION_SPEED;
+
+                colors[i*3] += (targetColors[i*3] - colors[i*3]) * 0.05;
+                colors[i*3+1] += (targetColors[i*3+1] - colors[i*3+1]) * 0.05;
+                colors[i*3+2] += (targetColors[i*3+2] - colors[i*3+2]) * 0.05;
+
+                if (currentShapeName === 'rocket' && appMode === 'gesture' && i > PARTICLE_COUNT * 0.85) {
+                    positions[i*3] += (Math.random()-0.5)*0.2;
+                    positions[i*3+1] += (Math.random()-0.5)*0.5;
+                }
+            }
+            
+            positionsAttribute.needsUpdate = true;
+            colorsAttribute.needsUpdate = true;
+        }
+
+        // 2. PUSHUP LOGIC
+        function updatePushupLogic() {
+            updateGestureLogic(); 
+            particles.rotation.x = 0;
+            particles.rotation.y = 0;
+        }
+
+        // 3. TIC TAC TOE LOGIC
+        function resetTicTacToe() {
+            tttBoard = Array(9).fill(null);
+            tttTurn = 'X';
+            tttWinner = null;
+            tttWinningLine = [];
+            tttHoverIndex = -1;
+            document.getElementById('game-message').style.display = 'none';
+        }
+
+        function generateTicTacToeBoard() {
+            let idx = 0;
+            const lineThickness = 0.5;
+            for(let i=0; i<1000; i++) setTarget(idx++, -5 + (Math.random()-0.5)*lineThickness, (Math.random()-0.5)*30, 0, C_BLUE);
+            for(let i=0; i<1000; i++) setTarget(idx++, 5 + (Math.random()-0.5)*lineThickness, (Math.random()-0.5)*30, 0, C_BLUE);
+            for(let i=0; i<1000; i++) setTarget(idx++, (Math.random()-0.5)*30, 5 + (Math.random()-0.5)*lineThickness, 0, C_BLUE);
+            for(let i=0; i<1000; i++) setTarget(idx++, (Math.random()-0.5)*30, -5 + (Math.random()-0.5)*lineThickness, 0, C_BLUE);
+            for(let i=4000; i<PARTICLE_COUNT; i++) {
+                const x = (Math.random()-0.5)*50;
+                const y = (Math.random()-0.5)*50;
+                setTarget(i, x, y, (Math.random()-0.5)*10, new THREE.Color(0x000000));
+            }
+        }
+
+        function updateTicTacToeVisuals() {
+            const positionsAttribute = particles.geometry.attributes.position;
+            const colorsAttribute = particles.geometry.attributes.color;
+            particles.rotation.x = 0;
+            particles.rotation.y = 0;
+            const centers = [
+                {x:-10, y:10}, {x:0, y:10}, {x:10, y:10},
+                {x:-10, y:0},  {x:0, y:0},  {x:10, y:0},
+                {x:-10, y:-10},{x:0, y:-10},{x:10, y:-10}
+            ];
+            const SNAP_SPEED = 0.2; 
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+                let tx = targetPositions[i*3], ty = targetPositions[i*3+1], tz = targetPositions[i*3+2];
+                let tc_r = targetColors[i*3], tc_g = targetColors[i*3+1], tc_b = targetColors[i*3+2];
+                if (i >= 4000 && i < 22000) {
+                    const cellIdx = Math.floor((i - 4000) / 2000);
+                    const state = tttBoard[cellIdx];
+                    const center = centers[cellIdx];
+                    const localIdx = i % 2000; 
+                    if (state === 'X') {
+                        const size = 6;
+                        const line = (localIdx < 1000) ? 1 : -1;
+                        const t = (Math.random() - 0.5) * size;
+                        tx = center.x + t; ty = center.y + (t * line); tz = 0;
+                        tc_r = 0; tc_g = 1; tc_b = 1;
+                    }
+                    else if (state === 'O') {
+                        const angle = Math.random() * 6.28;
+                        const r = 3 + Math.random()*0.5;
+                        tx = center.x + r * Math.cos(angle); ty = center.y + r * Math.sin(angle); tz = 0;
+                        tc_r = 1; tc_g = 0; tc_b = 0;
+                    }
+                    else {
+                        if (cellIdx === tttHoverIndex && !tttWinner) {
+                            tx = center.x + (Math.random()-0.5)*8; ty = center.y + (Math.random()-0.5)*8; tz = (Math.random()-0.5)*2;
+                            tc_r = 1; tc_g = 1; tc_b = 0; 
+                        } else {
+                            tx = center.x + (Math.random()-0.5)*15; ty = center.y + (Math.random()-0.5)*15; tz = 100;
+                            tc_r = 0; tc_g = 0; tc_b = 0;
+                        }
+                    }
+                    if (tttWinner && tttWinningLine.includes(cellIdx)) {
+                         tz += Math.sin(Date.now()*0.01)*2;
+                         tc_r = 0; tc_g = 1; tc_b = 0; 
+                    }
+                }
+                positions[i*3] += (tx - positions[i*3]) * SNAP_SPEED;
+                positions[i*3+1] += (ty - positions[i*3+1]) * SNAP_SPEED;
+                positions[i*3+2] += (tz - positions[i*3+2]) * SNAP_SPEED;
+                colors[i*3] += (tc_r - colors[i*3]) * SNAP_SPEED;
+                colors[i*3+1] += (tc_g - colors[i*3+1]) * SNAP_SPEED;
+                colors[i*3+2] += (tc_b - colors[i*3+2]) * SNAP_SPEED;
+            }
+            positionsAttribute.needsUpdate = true;
+            colorsAttribute.needsUpdate = true;
+        }
+        
+        function handleTTTInput() {
+            if (tttWinner || tttTurn !== 'X') return false;
+            if (tttHoverIndex !== -1 && tttBoard[tttHoverIndex] === null) {
+                tttBoard[tttHoverIndex] = 'X';
+                checkWin();
+                if (!tttWinner) {
+                    tttTurn = 'O';
+                    setTimeout(aiMove, 600);
+                }
+                return true; 
+            }
+            return false;
+        }
+
+        function aiMove() {
+            if (tttWinner) return;
+            let available = [];
+            for(let i=0; i<9; i++) if (tttBoard[i] === null) available.push(i);
+            if (available.length > 0) {
+                const move = available[Math.floor(Math.random() * available.length)];
+                tttBoard[move] = 'O';
+                checkWin();
+                tttTurn = 'X';
+            }
+        }
+
+        function checkWin() {
+            const wins = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+            for (let l of wins) {
+                const [a,b,c] = l;
+                if (tttBoard[a] && tttBoard[a] === tttBoard[b] && tttBoard[a] === tttBoard[c]) {
+                    tttWinner = tttBoard[a]; tttWinningLine = l;
+                    endGame(tttWinner + " WINS!");
+                    return;
+                }
+            }
+            if (!tttBoard.includes(null)) { tttWinner = 'Draw'; endGame("DRAW!"); }
+        }
+
+        function endGame(msg) {
+            const el = document.getElementById('game-message');
+            el.innerText = msg; el.style.display = 'block';
+            el.style.color = (msg.includes('X')) ? '#00FFFF' : ((msg.includes('O')) ? '#FF0000' : '#FFFFFF');
+            setTimeout(() => { if(appMode === 'tictactoe') resetTicTacToe(); }, 3000);
+        }
+
+        // --- SHAPE GENERATORS ---
+        function generateShape(type) {
+            currentShapeName = type;
+            document.getElementById('main-status').innerText = "Shape: " + type.toUpperCase();
+            if (type==='rocket') generateRocket();
+            else if (type==='bmw'||type==='audi'||type==='tata') generateCar(type);
+            else if (type==='flag') generateFlag();
+            else if (type==='heart') generateHeart();
+            else if (type==='flower') generateFlower();
+            else if (type==='saturn') generateSaturn();
+        }
+
+        function generateTextShape(text) {
+            if(!text) text = ""; text = text.toString().toUpperCase();
+            const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
+            canvas.width = 400; canvas.height = 150;
+            ctx.fillStyle = 'black'; ctx.fillRect(0,0,400,150);
+            ctx.fillStyle = 'white'; ctx.font = 'bold 80px Arial';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(text, 200, 75);
+            const data = ctx.getImageData(0,0,400,150).data;
+            let valid = [];
+            for(let y=0; y<150; y+=2) for(let x=0; x<400; x+=2) if (data[(y*400+x)*4] > 128) valid.push({x,y});
+            const scale = 0.12; const ox = -200 * scale; const oy = 75 * scale;
+            for(let i=0; i<PARTICLE_COUNT; i++) {
+                if(i < valid.length) {
+                    const p = valid[i];
+                    setTarget(i, (p.x*scale)+ox, -(p.y*scale)+oy, 0, new THREE.Color().setHSL(i/valid.length, 1, 0.5));
+                } else {
+                    const r = 30 + Math.random()*20;
+                    const theta = Math.random()*6.28; const phi = Math.random()*3.14;
+                    setTarget(i, r*Math.sin(phi)*Math.cos(theta), r*Math.sin(phi)*Math.sin(theta), r*Math.cos(phi), new THREE.Color(0x111111));
+                }
+            }
+        }
+
+        // --- EXISTING SHAPE FUNCTIONS ---
+        function generateRocket(){for(let i=0;i<PARTICLE_COUNT;i++){let x,y,z,c;let r=Math.random();if(r<0.6){y=(Math.random()-0.5)*16+2;x=2.2*Math.cos(Math.random()*6.28);z=2.2*Math.sin(Math.random()*6.28);c=(y>2&&y<6&&z>1.5)?C_BLUE:new THREE.Color(0xDDDDDD);}else if(r<0.75){let p=Math.random();y=10+p*5;x=2.2*(1-p)*Math.cos(Math.random()*6.28);z=2.2*(1-p)*Math.sin(Math.random()*6.28);c=C_WHITE;}else if(r<0.85){let s=Math.random()>0.5?1:-1;y=(Math.random()-0.5)*10;x=1.3*Math.cos(Math.random()*6.28)+s*4;z=1.3*Math.sin(Math.random()*6.28);c=(y>3)?C_SAFFRON:C_WHITE;}else{let hr=Math.random()*12;y=-6-hr;let rr=Math.random()*2*(1+hr/4);x=rr*Math.cos(Math.random()*6.28);z=rr*Math.sin(Math.random()*6.28);c=C_RED;}setTarget(i,x,y,z,c);}}
+        function generateCar(t){let w=12,h=4,l=20,c=new THREE.Color(0xCCCCCC);if(t==='tata'){h=6;w=13;c=new THREE.Color(0xDDDDDD);}else if(t==='bmw')c=new THREE.Color(0x224488);for(let i=0;i<PARTICLE_COUNT;i++){let x,y,z,cl=c;if(i<PARTICLE_COUNT*0.2){let wi=Math.floor(Math.random()*4);let wx=(wi%2==0?w/2:-w/2),wz=(wi<2?l/2-4:-l/2+4);let ang=Math.random()*6.28,rad=Math.random()*2.5;x=wx+(Math.random()-0.5);y=-h/2+1.5+rad*Math.cos(ang);z=wz+rad*Math.sin(ang);cl=new THREE.Color(0x111111);}else{if(Math.random()>0.4){x=(Math.random()-0.5)*w;y=(Math.random()-0.5)*h-h/4+1.5;z=(Math.random()-0.5)*l;}else{x=(Math.random()-0.5)*w*0.85;y=Math.random()*3.5+h/4+1.5;z=(Math.random()-0.5)*l*0.6;}if(y>1.5+h/2)cl=new THREE.Color(0x111111);}setTarget(i,x,y,z,cl);}}
+        function generateFlag(){for(let i=0;i<PARTICLE_COUNT;i++){let x=(Math.random()-0.5)*26,y=(Math.random()-0.5)*18,z=Math.sin(x*0.3)*2+(Math.random()-0.5);let c;if(y>3)c=C_SAFFRON;else if(y<-3)c=C_GREEN;else{c=C_WHITE;if(Math.sqrt(x*x+y*y)<2.8)c=C_BLUE;}setTarget(i,x,y,z,c);}}
+        function generateHeart(){for(let i=0;i<PARTICLE_COUNT;i++){let t=Math.random()*6.28,r=Math.pow(Math.random(),0.3);let x=16*Math.pow(Math.sin(t),3)*0.9*r,y=(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t))*0.9*r+2,z=(Math.random()-0.5)*6*r;setTarget(i,x,y,z,y>2?new THREE.Color(0xFF0055):new THREE.Color(0xFF99AA));}}
+        function generateFlower(){for(let i=0;i<PARTICLE_COUNT;i++){let th=Math.random()*6.28,r=12*Math.cos(5*th)*Math.sqrt(Math.random()),x=r*Math.cos(th),y=r*Math.sin(th),z=(Math.sin(5*th)*5)*(Math.random()-0.5);setTarget(i,x,y,z,Math.sqrt(x*x+y*y)<2?C_GOLD:C_RED);}}
+        function generateSaturn(){for(let i=0;i<PARTICLE_COUNT;i++){if(i<PARTICLE_COUNT*0.35){let r=6,u=Math.random(),v=Math.random(),t=2*Math.PI*u,p=Math.acos(2*v-1);setTarget(i,r*Math.sin(p)*Math.cos(t),r*Math.sin(p)*Math.sin(t),r*Math.cos(p),new THREE.Color(0xC2B280));}else{let a=Math.random()*6.28,r=9+Math.random()*10,x=r*Math.cos(a),z=r*Math.sin(a);setTarget(i,x,-z*Math.sin(0.5),z*Math.cos(0.5),new THREE.Color(0xA49B72));}}}
+
+        // --- MEDIAPIPE LOGIC ---
+        function initMediaPipe() {
+            const video = document.getElementById('video-input');
+            const canvas = document.getElementById('output-canvas');
+            const ctx = canvas.getContext('2d');
+            const cursor = document.getElementById('hand-cursor');
+            const loading = document.getElementById('loading');
+
+            const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+            hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7});
+            
+            hands.onResults(results => {
+                if (appMode === 'pushup') return;
+                
+                loading.style.display = 'none';
+                canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+                ctx.save(); ctx.clearRect(0,0,canvas.width,canvas.height);
+                ctx.scale(-1, 1); ctx.translate(-canvas.width, 0); // Mirror
+                ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    const lm = results.multiHandLandmarks[0];
+                    drawConnectors(ctx, lm, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
+                    drawLandmarks(ctx, lm, {color: '#FF0000', lineWidth: 1, radius: 3});
+
+                    isHandPresent = true;
+                    handX = 1.0 - lm[9].x; 
+                    handY = lm[9].y;
+
+                    // Update Cursor Position
+                    const screenX = handX * window.innerWidth;
+                    const screenY = handY * window.innerHeight;
+                    cursor.style.display = 'block';
+                    cursor.style.left = screenX + 'px';
+                    cursor.style.top = screenY + 'px';
+                    
+                    const pinch = Math.hypot(lm[8].x - lm[4].x, lm[8].y - lm[4].y) < 0.05;
+
+                    // --- MODE HANDLERS ---
+                    if (appMode === 'gesture') {
+                        if (pinch && !wasPinching) {
+                            currentShapeIndex = (currentShapeIndex + 1) % shapeList.length;
+                            generateShape(shapeList[currentShapeIndex]);
+                            cursor.classList.add('pinching');
+                        } else if (!pinch) cursor.classList.remove('pinching');
+                        
+                        let extended = 0;
+                        [8,12,16,20].forEach(t => { if(lm[t].y < lm[t-2].y) extended++; });
+                        isGravityWell = (extended <= 1 && !pinch);
+                    }
+                    else if (appMode === 'tictactoe') {
+                        let col = -1, row = -1;
+                        if(handX > 0.2 && handX < 0.8) col = Math.floor((handX - 0.2) / 0.2);
+                        if(handY > 0.2 && handY < 0.8) row = Math.floor((handY - 0.2) / 0.2);
+                        
+                        tttHoverIndex = (col >= 0 && col <= 2 && row >= 0 && row <= 2) ? (row * 3 + col) : -1;
+
+                        if (pinch && !wasPinching) {
+                            if(handleTTTInput()) {
+                                cursor.classList.add('locked');
+                                setTimeout(() => cursor.classList.remove('locked'), 500);
+                            }
+                            cursor.classList.add('pinching');
+                        } else if (!pinch) cursor.classList.remove('pinching');
+                    }
+                    else if (appMode === 'type') {
+                        // Check collision with virtual keys
+                        let hoveringKey = null;
+                        kbKeys.forEach(key => {
+                            const rect = key.getBoundingClientRect();
+                            if(screenX >= rect.left && screenX <= rect.right && 
+                               screenY >= rect.top && screenY <= rect.bottom) {
+                                key.classList.add('hovered');
+                                hoveringKey = key;
+                            } else {
+                                key.classList.remove('hovered');
+                            }
+                        });
+
+                        if (pinch && !wasPinching && hoveringKey) {
+                            hoveringKey.classList.add('active');
+                            setTimeout(() => hoveringKey.classList.remove('active'), 200);
+                            handleVirtualKeyPress(hoveringKey.dataset.key);
+                            cursor.classList.add('pinching');
+                        } else if (!pinch) cursor.classList.remove('pinching');
+                    }
+
+                    wasPinching = pinch;
+
+                } else {
+                    isHandPresent = false;
+                    cursor.style.display = 'none';
+                    tttHoverIndex = -1;
+                }
+                ctx.restore();
+            });
+
+            const pose = new Pose({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`});
+            pose.setOptions({modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
+
+            pose.onResults(results => {
+                if (appMode !== 'pushup') return;
+                
+                loading.style.display = 'none';
+                canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+                ctx.save(); ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+                
+                if (results.poseLandmarks) {
+                    drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
+                    drawLandmarks(ctx, results.poseLandmarks, {color: '#FF0000', lineWidth: 1, radius: 3});
+
+                    const lm = results.poseLandmarks;
+                    const p1 = lm[12], p2 = lm[14], p3 = lm[16];
+                    
+                    if (p1 && p2 && p3) {
+                        const angle = calculateAngle(p1, p2, p3);
+                        const feedback = document.getElementById('pushup-feedback');
+                        feedback.style.display = 'block';
+
+                        if (angle > 160) {
+                            if (isPushupDown) {
+                                pushupCount++;
+                                generateTextShape(pushupCount.toString());
+                                isPushupDown = false;
+                                feedback.innerText = "UP!";
+                                feedback.style.color = "#00FF00";
+                            }
+                        } else if (angle < 90) {
+                            isPushupDown = true;
+                            feedback.innerText = "DOWN";
+                            feedback.style.color = "#FFD700";
+                        }
+                    }
+                }
+                ctx.restore();
+            });
+
+            function calculateAngle(a, b, c) {
+                let radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+                let angle = Math.abs(radians * 180.0 / Math.PI);
+                if (angle > 180.0) angle = 360 - angle;
+                return angle;
+            }
+
+            const cameraUtils = new Camera(video, {
+                onFrame: async () => {
+                    if (appMode === 'pushup') {
+                        await pose.send({image: video});
+                    } else {
+                        await hands.send({image: video});
+                    }
+                },
+                width: 480, height: 360
+            });
+            cameraUtils.start();
+        }
+    </script>
+</body>
+</html>
+
+
+
